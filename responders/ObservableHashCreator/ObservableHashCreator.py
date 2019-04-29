@@ -1,12 +1,13 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import datetime
 import hashlib
 import json
 import sys
 
 from cortexutils.responder import Responder
-from elasticsearch_dsl import connections, Document, Keyword, Index
+from elasticsearch_dsl import connections, Document, Keyword, Index, Date
 from thehive4py.models import AlertArtifact
 
 
@@ -51,6 +52,8 @@ class ObservableHashCreator(Responder):
 
         data = self.get_data()
         artifacts = self.get_param('data.artifacts')
+        rule_title = self.get_param('data.title', default='no data')
+        suppressing_username = self.get_param('data.createdBy', default='no data')
         if not artifacts:  # If there are no artifacts we have no data to generate a hash
             self.error('No artifacts submitted')
         observables = []
@@ -63,6 +66,9 @@ class ObservableHashCreator(Responder):
 
         class AlertHash(Document):
             alert_hash = Keyword()
+            date_suppressed = Date()
+            rule_title = Keyword()
+            suppressing_username = Keyword()
             class Index:
                 name = self.es_index  # This is required because the commented registration below does not work
 
@@ -73,7 +79,12 @@ class ObservableHashCreator(Responder):
             alert_hashes.create()
         results = AlertHash.search().filter('term', alert_hash=observable_hash).execute(ignore_cache=True)
         if not results:  # Don't save the same hash multiple times
-            alert_hash = AlertHash(alert_hash=observable_hash)
+            alert_hash = AlertHash(
+                alert_hash=observable_hash,
+                date_suppressed=datetime.datetime.now(),
+                rule_title=rule_title,
+                suppressing_username=suppressing_username
+            )
             alert_hash.save()
             message = 'MD5 hash [{}] added to Elasticsearch database [{}:{}] index [{}]'.format(
                 observable_hash, self.es_host, self.es_port, self.es_index)
