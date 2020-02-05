@@ -8,7 +8,13 @@ import sys
 
 from cortexutils.responder import Responder
 from elasticsearch_dsl import connections, Document, Keyword, Index, Date
-from thehive4py.models import AlertArtifact
+from thehive4py.models import AlertArtifact, JSONSerializable, CustomJsonEncoder
+
+
+# Monkey patch jsonify as the indent keyword results in different hashes between python 2 & 3
+def jsonify(self):
+    return json.dumps(self, sort_keys=True, cls=CustomJsonEncoder)
+JSONSerializable.jsonify = jsonify
 
 
 class ObservableHashCreator(Responder):
@@ -61,8 +67,8 @@ class ObservableHashCreator(Responder):
         #   sure that the we generate the same hash that will be read from the database by HashSuppressorEnhancement
         for artifact in artifacts:
             observables.append(AlertArtifact(dataType=artifact.get('dataType'), data=artifact.get('data')))
-        observable_hash_string = '|'.join(sorted([observable.jsonify() for observable in observables]))
-        observable_hash = hashlib.md5(observable_hash_string).hexdigest()
+        observable_hash_string = u'|'.join(sorted([observable.jsonify() for observable in observables]))
+        observable_hash = hashlib.md5(observable_hash_string.encode('utf-8')).hexdigest()
 
         class AlertHash(Document):
             alert_hash = Keyword()
